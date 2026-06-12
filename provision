@@ -1,0 +1,98 @@
+provider "aws" {
+  region = "us-east-1"
+}
+
+variable "cidr" {
+  default  = "10.0.0.0/16"
+}
+
+resource "aws_key_pair" "example" {
+  key_name = "terrraform-demo-deepak"
+  public_key = file("~/.ssh/id_rsa.pub")
+}
+
+resource "aws_vpc" "myvpc" {
+  cidr_block = var.cidr
+}
+
+resource "aws_subnet" "sb1" {
+  vpc_id = aws_vpc.myvpc.id
+  cidr_block = "10.0.0.0/24"
+  availability_zone = "us-east-1a"
+  map_public_ip_on_launch = true
+}
+
+resource "aws_internet_gateway" "ig1" {
+  vpc_id = aws_vpc.myvpc.id
+}
+
+resource "aws_route_table" "r1" {
+  vpc_id = aws_vpc.myvpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.ig1.id
+  }
+}
+
+resource "aws_route_table_association" "rta1" {
+  subnet_id = aws_subnet.sb1.id
+  route_table_id = aws_route_table.r1.id
+}
+
+resource "aws_security_group" "websg" {
+  name = "websg"
+  vpc_id = aws_vpc.myvpc.id
+
+  ingress {
+    description = "tls from vpc"
+    from_port = 80
+    to_port = 80
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "http from vpc"
+    from_port = 22
+    to_port = 22
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "webserver1" {
+  ami = "ami-091138d0f0d41ff90"
+  instance_type = "t3.micro"
+  key_name = aws_key_pair.example.key_name 
+  vpc_security_group_ids = [aws_security_group.websg.id]
+  subnet_id = aws_subnet.sb1.id
+
+  connection {
+    type = "ssh"
+    user = "ubuntu"
+    private_key = file("/home/vscode/.ssh/id_rsa")
+    host = self.public_ip
+  }
+  provisioner "file" {
+    source = "app.py"
+    destination = "/home/ubuntu/app.py"
+  }
+
+  provisioner "remote-exec" {
+  inline = [
+    "sudo apt update -y",
+    "sudo apt install -y python3-pip python3-venv",
+    "cd /home/ubuntu",
+    "python3 -m venv venv",
+    "source venv/bin/activate",
+    "pip install flask",
+    "nohup python3 app.py &"
+  ]
+}
+}
