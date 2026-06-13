@@ -96,3 +96,13 @@ resource "aws_instance" "webserver1" {
   ]
 }
 }
+
+
+
+
+
+
+sudo apt install python3-flask
+
+export FLASK_APP=app.py
+flask run --host=0.0.0.0 --port=5000
